@@ -1,1 +1,541 @@
 
+#!/usr/bin/env python
+# coding: utf-8
+
+# In[1]:
+
+
+import numpy as np
+import nestle
+from scipy.special import ndtri
+from time import time               # use for timing functions
+import sys
+import os
+from matplotlib import pyplot as pl # import pyplot from matplotlib
+import matplotlib as mpl
+import lal
+import lalsimulation
+rcparams = {}
+rcparams['text.usetex'] = True    #font
+rcparams['axes.linewidth'] = 0.5
+rcparams['font.family'] = 'sans-serif'
+rcparams['font.size'] = 19
+
+# functions for plotting posteriors
+import corner
+from scipy.stats import gaussian_kde
+
+
+# In[2]:
+
+
+# set the true values of the model parameters for creating the data
+T_obs1 = 86400# gradient of the line
+fs1 = 0.3 # y-intercept of the line
+
+T_obs2 = 4 # gradient of the line
+fs2 = 2048 # y-intercept of the line
+
+f_low1=0.127
+f_low2=10
+deltat=0
+m1 = 36
+m2 = 29
+dist=100
+iota=0.4
+phi=1.3     
+
+asd1=1e-20
+sigma1=asd1*np.sqrt(fs1*T_obs1/2.0)
+asd2=5e-24
+sigma2=asd2*np.sqrt(fs2*T_obs2/2.0)
+# set the natural logarithm of 2pi, so that it doesn't have to be recalculated
+LN2PI = np.log(2.*np.pi)
+LNSIGMA1 = np.log(sigma1) # natural log of the data noise standard deviation
+LNSIGMA2 = np.log(sigma2)
+# plot the resulting posteriors
+mpl.rcParams.update({'font.size': 15})
+
+
+# In[3]:
+
+
+#def plotposts(samples, truths=[m,c]):
+def plotposts(samples, outfile, **kwargs):   #graphic display
+    """
+    Function to plot posteriors using corner.py and scipy's gaussian KDE function.
+    """
+    if "truths" not in kwargs:
+        kwargs["truths"] = [deltat, m1, m2, dist, iota, phi]
+
+    fig = corner.corner(samples, labels=[r'$deltat$', r'$m1$', r'$m2$',r'$dist$',r'$iota$',r'$phi$'],quantiles=(0.16,0.84), show_titles=True,hist_kwargs={'density': True}, **kwargs)
+
+    # plot KDE smoothed version of distributions
+    #for axidx, samps in zip([0, 3], samples.T):
+        #kde = gaussian_kde(samps)
+        #xvals = fig.axes[axidx].get_xlim()
+        #xvals = np.linspace(xvals[0], xvals[1], 100)
+        #fig.axes[axidx].plot(xvals, kde(xvals), color='firebrick')
+    
+    pl.savefig(outfile)
+
+
+# In[4]:
+
+
+def gen_bbh(T_obs, fs, f_low, deltat, m1, m2, dist, iota, phi):
+    """
+    generates a BBH timedomain signal
+    """
+    N = T_obs * fs      # the total number of time samples
+    df=1.0/T_obs
+    dt = 1 / fs             # the sampling time (sec)
+    #f_low = 0.9            # lowest frequency of waveform (Hz)
+    f_high=fs/2.0
+    amplitude_order = 0
+    phase_order = 9
+    approximant = lalsimulation.IMRPhenomPv2
+    #dist = 1e6*lal.PC_SI  # put it as 1 MPc
+    
+    
+    # make waveform
+    hp, hc = lalsimulation.SimInspiralChooseFDWaveform(
+                    m1 * lal.MSUN_SI, m2 * lal.MSUN_SI,
+                    0, 0, 0, 0, 0, 0,
+                    dist*1e6*lal.PC_SI,
+                    iota,phi,0,   #const inclination
+                    0, 0,
+                    1.0/ T_obs,
+                    f_low,f_high,f_low,
+                    lal.CreateDict(),
+                    approximant)
+    
+    
+    z=np.exp(-2.0*np.pi*1j*deltat*df*np.arange(len(hp.data.data)))
+
+     
+    return hp.data.data*z
+
+
+# In[31]:
+
+
+def prior_transform(theta):
+    """
+    A function defining the tranform between the parameterisation in the unit hypercube
+    to the true parameters.
+
+    Args:
+        theta (tuple): a tuple containing the parameters.
+        
+    Returns:
+        tuple: a new tuple or array with the transformed parameters.
+    """
+    deltatprime,m1prime, m2prime, distprime, iotaprime, phiprime = theta # unpack the parameters (in their unit hypercube form)
+    
+    deltatmin=-0.002
+    deltatmax=0.002
+    
+    m1min= 20
+    m1max=50
+    
+    m2min=20
+    m2max=50
+
+    distmin = 0# lower bound on uniform prior on c
+    distmax =2000# upper bound on uniform prior on c
+    
+    iotamin=0
+    iotamax=np.pi
+    
+    phimin=0
+    phimax=np.pi
+
+ 
+    deltat = deltatprime*(deltatmax-deltatmin) + deltatmin     
+ 
+    m1temp = m1prime*(m1max-m1min) + m1min
+    m2temp = m2prime*(m2max-m2min) + m2min
+    #phitemp = phiprime*(phimax-phimin) + phimin
+    m1 = m1temp
+    m2 = m2temp
+    #phi = phitemp
+    if m2>m1:
+        m1=m2temp
+        m2=m1temp
+        #phi = np.mod(phitemp + np.pi, 2.0*np.pi)
+        #phi = np.mod(phitemp + np.pi, np.pi)
+
+ 
+    dist = distprime*(distmax-distmin) + distmin
+    iota = iotaprime*(iotamax-iotamin) + iotamin
+    phi = phiprime*(phimax-phimin) + phimin
+
+
+    return (deltat, m1, m2, dist, iota, phi)
+
+
+# In[32]:
+
+
+def loglikelihood_nestle1(theta):
+    """
+    The log-likelihood function.
+    """
+
+    deltat, m1, m2, dist, iota, phi = theta # unpack the parameters
+    #if m2>m1:
+        #return -np.inf
+
+    # normalisation
+    norm1 = -0.5*M1*LN2PI - M1*LNSIGMA1
+    
+    signal1=gen_bbh(T_obs1, fs1,f_low1, deltat,m1, m2, dist, iota, phi)
+    df1=1.0/T_obs1
+    sidx1=int(f_low1/df1)
+
+    # chi-squared (data, sigma and x are global variables defined early on in this notebook)
+    chisq1 = np.sum(((data1[sidx1:].real-signal1[sidx1:].real)/sigma1)**2)
+    chisq1 += np.sum(((data1[sidx1:].imag-signal1[sidx1:].imag)/sigma1)**2)
+    
+    return norm1 - 0.5*chisq1
+
+
+# In[33]:
+
+
+print('Nestle version: {}'.format(nestle.__version__))
+
+# seed our random number generator, so we have reproducible data
+np.random.seed(np.random.seed(42)) #sum([ord(v) for v in 'samplers']))
+
+# create the data - the model plus Gaussian noise
+signal1 = gen_bbh(T_obs1, fs1,f_low1, deltat, m1, m2, dist, iota, phi) 
+M1=signal1.shape[0]
+data1=signal1+ sigma1*(np.random.randn(M1)+np.random.randn(M1)*1j)#? 
+print(M1)
+# plot the data
+mpl.rcParams.update(rcparams) # update plot parameters
+fig, ax = pl.subplots(figsize=(9,6))
+f1=np.arange(M1)/T_obs1
+#ax.semilogx(f1,data1.real, 'r', alpha=0.5, label='data1')
+ax.plot(f1,data1.real, 'r', alpha=0.5, label='data1')
+ax.plot(f1,signal1.real, 'b', alpha=0.5, label='signal1')
+#ax.plot(x, gen_bbh(T_obs, fs, m1, m2, dist, iota, phi), 'r-', lw=2, label='model')
+ax.legend()
+#ax.set_xlim([0.12, 0.14])
+ax.set_xlabel(r'$x$')
+pl.savefig('./data10m.png') 
+#exit(0)
+
+
+# In[34]:
+
+
+nlive = 1024     # number of live points
+method = 'multi' # use MutliNest algorithm
+ndims = 6        # six parameters
+tol = 0.1        # the stopping criterion
+
+t0 = time()
+res1 = nestle.sample(loglikelihood_nestle1, prior_transform, ndims, method=method, npoints=nlive, dlogz=tol,callback=nestle.print_progress)
+t1 = time()
+
+timenestle = (t1-t0)
+
+print("Time taken to run 'Nestle' is {} seconds".format(timenestle))
+
+logZnestle = res1.logz                         # value of logZ
+infogainnestle = res1.h                        # value of the information gain in nats
+logZerrnestle = np.sqrt(infogainnestle/nlive) # estimate of the statistcal uncertainty on logZ
+
+print("log(Z) = {} ± {}".format(logZnestle, logZerrnestle))
+
+print(res1.summary())
+
+# re-scale weights to have a maximum of one
+nweights = res1.weights/np.max(res1.weights)
+
+# get the probability of keeping a sample from the weights
+keepidx = np.where(np.random.rand(len(nweights)) < nweights)[0]
+
+# get the posterior samples
+samples_nestle = res1.samples[keepidx,:]
+
+# lets store some results for showing together later
+resdict = {}
+resdict['deltatnestle_mu'] = np.mean(samples_nestle[:,0])      # mean of m samples
+resdict['deltatnestle_sig'] = np.std(samples_nestle[:,0])      # standard deviation 
+resdict['m1nestle_mu'] = np.mean(samples_nestle[:,1])      # mean of m samples
+resdict['m1nestle_sig'] = np.std(samples_nestle[:,1])      # standard deviation of m samples
+resdict['m2nestle_mu'] = np.mean(samples_nestle[:,2])      # mean of c samples
+resdict['m2nestle_sig'] = np.std(samples_nestle[:,2])      # standard deviation of c samples
+
+resdict['distnestle_mu'] = np.mean(samples_nestle[:,3])      # mean of iota samples
+resdict['distnestle_sig'] = np.std(samples_nestle[:,3])      # standard deviation of iota samples
+
+resdict['iotanestle_mu'] = np.mean(samples_nestle[:,4])      # mean of iota samples
+resdict['iotanestle_sig'] = np.std(samples_nestle[:,4])      # standard deviation of iota samples
+
+resdict['phinestle_mu'] = np.mean(samples_nestle[:,5])      # mean of phi samples
+resdict['phinestle_sig'] = np.std(samples_nestle[:,5])      # standard deviation of phi samples
+
+#resdict['ccnestle'] = np.corrcoef(samples_nestle.T)[0,1]  # correlation coefficient between parameters
+
+
+resdict['nestle_npos'] = len(samples_nestle)              # number of posterior samples
+resdict['nestle_time'] = timenestle                       # run time
+resdict['nestle_logZ'] = logZnestle                       # log marginalised likelihood
+resdict['nestle_logZerr'] = logZerrnestle                 # uncertainty on log(Z)
+
+print('Number of posterior samples is {}'.format(len(samples_nestle)))
+
+plotposts(samples_nestle,'./corner_8LISA.png')
+
+resdict['essnestle'] = int(len(samples_nestle)/ timenestle)
+print("Effective samples per second: {}".format(resdict['essnestle']))
+
+
+# In[28]:
+
+
+def loglikelihood_nestle2(theta):
+    """
+    The log-likelihood function.
+    """
+
+    deltat,m1, m2, dist, iota, phi = theta # unpack the parameters
+    #if m2>m1:
+        #return -np.inf
+
+    # normalisation
+    norm2 = -0.5*M2*LN2PI - M2*LNSIGMA2
+    
+    signal2=gen_bbh(T_obs2, fs2,f_low2, deltat, m1, m2, dist, iota, phi)
+    df2=1.0/T_obs2
+    sidx2=int(f_low2/df2)
+
+    # chi-squared (data, sigma and x are global variables defined early on in this notebook)
+    chisq2 = np.sum(((data2[sidx2:].real-signal2[sidx2:].real)/sigma2)**2)
+    chisq2 += np.sum(((data2[sidx2:].imag-signal2[sidx2:].imag)/sigma2)**2)
+    
+    return norm2 - 0.5*chisq2
+
+
+# In[29]:
+
+
+print('Nestle version: {}'.format(nestle.__version__))
+
+M2=int(T_obs2 * fs2/2)+1
+# seed our random number generator, so we have reproducible data
+np.random.seed(np.random.seed(42)) #sum([ord(v) for v in 'samplers']))
+
+# create the data - the model plus Gaussian noise
+data2 = gen_bbh(T_obs2, fs2,f_low2, deltat, m1, m2, dist, iota, phi)+ sigma2*(np.random.randn(M2)+np.random.randn(M2)*1j)#?
+# plot the data
+mpl.rcParams.update(rcparams) # update plot parameters
+fig, ax = pl.subplots(figsize=(9,6))
+
+f2=np.arange(M2)/T_obs2
+ax.semilogx(f2,data2.real, 'b', alpha=0.5, label='data2')
+#ax.plot(x, gen_bbh(T_obs, fs, m1, m2, dist, iota, phi), 'r-', lw=2, label='model')
+ax.legend()
+#ax.set_xlim([xmin, xmax])
+ax.set_xlabel(r'$x$')
+pl.savefig('./data5.png') 
+#exit(0)
+
+
+# In[30]:
+
+
+nlive = 1024     # number of live points
+method = 'multi' # use MutliNest algorithm
+ndims = 6        # two parameters
+tol = 0.1        # the stopping criterion
+
+t0 = time()
+res2 = nestle.sample(loglikelihood_nestle2, prior_transform, ndims, method=method, npoints=nlive, dlogz=tol,callback=nestle.print_progress)
+t1 = time()
+
+timenestle = (t1-t0)
+
+print("Time taken to run 'Nestle' is {} seconds".format(timenestle))
+
+logZnestle = res2.logz                         # value of logZ
+infogainnestle = res2.h                        # value of the information gain in nats
+logZerrnestle = np.sqrt(infogainnestle/nlive) # estimate of the statistcal uncertainty on logZ
+
+print("log(Z) = {} ± {}".format(logZnestle, logZerrnestle))
+
+print(res2.summary())
+
+# re-scale weights to have a maximum of one
+nweights = res2.weights/np.max(res2.weights)
+
+# get the probability of keeping a sample from the weights
+keepidx = np.where(np.random.rand(len(nweights)) < nweights)[0]
+
+# get the posterior samples
+samples_nestle = res2.samples[keepidx,:]
+
+# lets store some results for showing together later
+resdict = {}
+resdict['deltatnestle_mu'] = np.mean(samples_nestle[:,0])      # mean of m samples
+resdict['deltatnestle_sig'] = np.std(samples_nestle[:,0])      # standard deviation 
+resdict['m1nestle_mu'] = np.mean(samples_nestle[:,1])      # mean of m samples
+resdict['m1nestle_sig'] = np.std(samples_nestle[:,1])      # standard deviation of m samples
+resdict['m2nestle_mu'] = np.mean(samples_nestle[:,2])      # mean of c samples
+resdict['m2nestle_sig'] = np.std(samples_nestle[:,2])      # standard deviation of c samples
+
+resdict['distnestle_mu'] = np.mean(samples_nestle[:,3])      # mean of iota samples
+resdict['distnestle_sig'] = np.std(samples_nestle[:,3])      # standard deviation of iota samples
+
+resdict['iotanestle_mu'] = np.mean(samples_nestle[:,4])      # mean of iota samples
+resdict['iotanestle_sig'] = np.std(samples_nestle[:,4])      # standard deviation of iota samples
+
+resdict['phinestle_mu'] = np.mean(samples_nestle[:,5])      # mean of phi samples
+resdict['phinestle_sig'] = np.std(samples_nestle[:,5])      # standard deviation of phi samples
+
+#resdict['ccnestle'] = np.corrcoef(samples_nestle.T)[0,1]  # correlation coefficient between parameters
+
+
+resdict['nestle_npos'] = len(samples_nestle)              # number of posterior samples
+resdict['nestle_time'] = timenestle                       # run time
+resdict['nestle_logZ'] = logZnestle                       # log marginalised likelihood
+resdict['nestle_logZerr'] = logZerrnestle                 # uncertainty on log(Z)
+
+print('Number of posterior samples is {}'.format(len(samples_nestle)))
+
+plotposts(samples_nestle,'./corner_13LIGO.png')
+
+resdict['essnestle'] = int(len(samples_nestle)/ timenestle)
+print("Effective samples per second: {}".format(resdict['essnestle']))
+
+
+# In[39]:
+
+
+def loglikelihood_nestle3(theta):
+    """
+    The log-likelihood function.
+    """
+
+    deltat, m1, m2, dist, iota, phi = theta # unpack the parameters
+
+    # normalisation
+    norm1 = -0.5*M1*LN2PI - M1*LNSIGMA1
+    
+    signal1=gen_bbh(T_obs1, fs1,f_low1, deltat,m1, m2, dist, iota, phi)
+
+    df1=1.0/T_obs1
+    sidx1=int(f_low1/df1)
+
+    # chi-squared (data, sigma and x are global variables defined early on in this notebook)
+    chisq1 = np.sum(((data1[sidx1:].real-signal1[sidx1:].real)/sigma1)**2)
+    chisq1 += np.sum(((data1[sidx1:].imag-signal1[sidx1:].imag)/sigma1)**2)
+    
+    # normalisation
+    norm2 = -0.5*M2*LN2PI - M2*LNSIGMA2
+    
+    signal2=gen_bbh(T_obs2, fs2,f_low2, deltat, m1, m2, dist, iota, phi)
+    df2=1.0/T_obs2
+    sidx2=int(f_low2/df2)
+    # chi-squared (data, sigma and x are global variables defined early on in this notebook)
+    chisq2 = np.sum(((data2[sidx2:].real-signal2[sidx2:].real)/sigma2)**2)
+    chisq2 += np.sum(((data2[sidx2:].imag-signal2[sidx2:].imag)/sigma2)**2)
+    
+    return norm1 - 0.5*chisq1+norm2 - 0.5*chisq2
+
+
+# In[40]:
+
+
+print('Nestle version: {}'.format(nestle.__version__))
+
+#M1=int(T_obs1 * fs1/2)+1
+#M2=int(T_obs2 * fs2/2)+1
+# seed our random number generator, so we have reproducible data
+#np.random.seed(np.random.seed(42)) #sum([ord(v) for v in 'samplers']))
+
+# plot the data
+mpl.rcParams.update(rcparams) # update plot parameters
+fig, ax = pl.subplots(figsize=(9,6))
+
+ax.semilogx(f1,data1.real, 'r', alpha=0.5, label='data1')
+ax.semilogx(f2,data2.real, 'b', alpha=0.5, label='data2')
+#ax.plot(x, gen_bbh(T_obs, fs, m1, m2, dist, iota, phi), 'r-', lw=2, label='model')
+ax.legend()
+#ax.set_xlim([xmin, xmax])
+ax.set_xlabel(r'$x$')
+pl.savefig('./data6.png') 
+#exit(0)
+
+
+# In[41]:
+
+
+nlive = 1024     # number of live points
+method = 'multi' # use MutliNest algorithm
+ndims = 6        # two parameters
+tol = 0.1        # the stopping criterion
+
+t0 = time()
+res3 = nestle.sample(loglikelihood_nestle3, prior_transform, ndims, method=method, npoints=nlive, dlogz=tol,callback=nestle.print_progress)
+t1 = time()
+
+timenestle = (t1-t0)
+
+print("Time taken to run 'Nestle' is {} seconds".format(timenestle))
+
+logZnestle = res3.logz                         # value of logZ
+infogainnestle = res3.h                        # value of the information gain in nats
+logZerrnestle = np.sqrt(infogainnestle/nlive) # estimate of the statistcal uncertainty on logZ
+
+print("log(Z) = {} ± {}".format(logZnestle, logZerrnestle))
+
+print(res3.summary())
+
+# re-scale weights to have a maximum of one
+nweights = res3.weights/np.max(res3.weights)
+
+# get the probability of keeping a sample from the weights
+keepidx = np.where(np.random.rand(len(nweights)) < nweights)[0]
+
+# get the posterior samples
+samples_nestle = res3.samples[keepidx,:]
+
+# lets store some results for showing together later
+resdict = {}
+
+resdict = {}
+resdict['deltatnestle_mu'] = np.mean(samples_nestle[:,0])      # mean of m samples
+resdict['deltatnestle_sig'] = np.std(samples_nestle[:,0])      # standard deviation 
+resdict['m1nestle_mu'] = np.mean(samples_nestle[:,1])      # mean of m samples
+resdict['m1nestle_sig'] = np.std(samples_nestle[:,1])      # standard deviation of m samples
+resdict['m2nestle_mu'] = np.mean(samples_nestle[:,2])      # mean of c samples
+resdict['m2nestle_sig'] = np.std(samples_nestle[:,2])      # standard deviation of c samples
+
+resdict['distnestle_mu'] = np.mean(samples_nestle[:,3])      # mean of iota samples
+resdict['distnestle_sig'] = np.std(samples_nestle[:,3])      # standard deviation of iota samples
+
+resdict['iotanestle_mu'] = np.mean(samples_nestle[:,4])      # mean of iota samples
+resdict['iotanestle_sig'] = np.std(samples_nestle[:,4])      # standard deviation of iota samples
+
+resdict['phinestle_mu'] = np.mean(samples_nestle[:,5])      # mean of phi samples
+resdict['phinestle_sig'] = np.std(samples_nestle[:,5])      # standard deviation of phi samplesameters
+
+
+resdict['nestle_npos'] = len(samples_nestle)              # number of posterior samples
+resdict['nestle_time'] = timenestle                       # run time
+resdict['nestle_logZ'] = logZnestle                       # log marginalised likelihood
+resdict['nestle_logZerr'] = logZerrnestle                 # uncertainty on log(Z)
+
+print('Number of posterior samples is {}'.format(len(samples_nestle)))
+
+plotposts(samples_nestle,'./corner_13both.png')
+
+resdict['essnestle'] = int(len(samples_nestle)/ timenestle)
+print("Effective samples per second: {}".format(resdict['essnestle']))
+
