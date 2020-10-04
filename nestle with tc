@@ -30,11 +30,11 @@ from scipy.stats import gaussian_kde
 
 
 # set the true values of the model parameters for creating the data
-T_obs1 = 86400# gradient of the line
-fs1 = 0.3 # y-intercept of the line
+T_obs1 = 86400# time of observation of lISA
+fs1 = 0.3 # sampling frequency
 
-T_obs2 = 4 # gradient of the line
-fs2 = 2048 # y-intercept of the line
+T_obs2 = 4 # time of observation of aLIGO
+fs2 = 2048 # sampling frequency
 
 f_low1=0.127
 f_low2=10
@@ -133,7 +133,7 @@ def prior_transform(theta):
     """
     deltatprime,m1prime, m2prime, distprime, iotaprime, phiprime = theta # unpack the parameters (in their unit hypercube form)
     
-    deltatmin=-0.002
+    deltatmin=-0.002 
     deltatmax=0.002
     
     m1min= 20
@@ -142,9 +142,9 @@ def prior_transform(theta):
     m2min=20
     m2max=50
 
-    distmin = 0# lower bound on uniform prior on c
-    distmax =2000# upper bound on uniform prior on c
-    
+    distmin = 0# lower bound on uniform prior on dist
+    distmax =2000# upper bound on uniform prior on dist
+   
     iotamin=0
     iotamax=np.pi
     
@@ -264,15 +264,15 @@ samples_nestle = res1.samples[keepidx,:]
 
 # lets store some results for showing together later
 resdict = {}
-resdict['deltatnestle_mu'] = np.mean(samples_nestle[:,0])      # mean of m samples
-resdict['deltatnestle_sig'] = np.std(samples_nestle[:,0])      # standard deviation 
-resdict['m1nestle_mu'] = np.mean(samples_nestle[:,1])      # mean of m samples
-resdict['m1nestle_sig'] = np.std(samples_nestle[:,1])      # standard deviation of m samples
-resdict['m2nestle_mu'] = np.mean(samples_nestle[:,2])      # mean of c samples
-resdict['m2nestle_sig'] = np.std(samples_nestle[:,2])      # standard deviation of c samples
+resdict['deltatnestle_mu'] = np.mean(samples_nestle[:,0])      # mean of deltat samples
+resdict['deltatnestle_sig'] = np.std(samples_nestle[:,0])      # standard deviation of deltat samples 
+resdict['m1nestle_mu'] = np.mean(samples_nestle[:,1])      # mean of m1 samples
+resdict['m1nestle_sig'] = np.std(samples_nestle[:,1])      # standard deviation of m1 samples
+resdict['m2nestle_mu'] = np.mean(samples_nestle[:,2])      # mean of m2 samples
+resdict['m2nestle_sig'] = np.std(samples_nestle[:,2])      # standard deviation of m2 samples
 
-resdict['distnestle_mu'] = np.mean(samples_nestle[:,3])      # mean of iota samples
-resdict['distnestle_sig'] = np.std(samples_nestle[:,3])      # standard deviation of iota samples
+resdict['distnestle_mu'] = np.mean(samples_nestle[:,3])      # mean of dist samples
+resdict['distnestle_sig'] = np.std(samples_nestle[:,3])      # standard deviation of dist samples
 
 resdict['iotanestle_mu'] = np.mean(samples_nestle[:,4])      # mean of iota samples
 resdict['iotanestle_sig'] = np.std(samples_nestle[:,4])      # standard deviation of iota samples
@@ -382,15 +382,15 @@ samples_nestle = res2.samples[keepidx,:]
 
 # lets store some results for showing together later
 resdict = {}
-resdict['deltatnestle_mu'] = np.mean(samples_nestle[:,0])      # mean of m samples
-resdict['deltatnestle_sig'] = np.std(samples_nestle[:,0])      # standard deviation 
-resdict['m1nestle_mu'] = np.mean(samples_nestle[:,1])      # mean of m samples
-resdict['m1nestle_sig'] = np.std(samples_nestle[:,1])      # standard deviation of m samples
-resdict['m2nestle_mu'] = np.mean(samples_nestle[:,2])      # mean of c samples
-resdict['m2nestle_sig'] = np.std(samples_nestle[:,2])      # standard deviation of c samples
+resdict['deltatnestle_mu'] = np.mean(samples_nestle[:,0])      # mean of deltat samples
+resdict['deltatnestle_sig'] = np.std(samples_nestle[:,0])      # standard deviation of deltat samples
+resdict['m1nestle_mu'] = np.mean(samples_nestle[:,1])      # mean of m1 samples
+resdict['m1nestle_sig'] = np.std(samples_nestle[:,1])      # standard deviation of m1 samples
+resdict['m2nestle_mu'] = np.mean(samples_nestle[:,2])      # mean of m2 samples
+resdict['m2nestle_sig'] = np.std(samples_nestle[:,2])      # standard deviation of m2 samples
 
-resdict['distnestle_mu'] = np.mean(samples_nestle[:,3])      # mean of iota samples
-resdict['distnestle_sig'] = np.std(samples_nestle[:,3])      # standard deviation of iota samples
+resdict['distnestle_mu'] = np.mean(samples_nestle[:,3])      # mean of dist samples
+resdict['distnestle_sig'] = np.std(samples_nestle[:,3])      # standard deviation of dist samples
 
 resdict['iotanestle_mu'] = np.mean(samples_nestle[:,4])      # mean of iota samples
 resdict['iotanestle_sig'] = np.std(samples_nestle[:,4])      # standard deviation of iota samples
@@ -510,15 +510,15 @@ samples_nestle = res3.samples[keepidx,:]
 resdict = {}
 
 resdict = {}
-resdict['deltatnestle_mu'] = np.mean(samples_nestle[:,0])      # mean of m samples
-resdict['deltatnestle_sig'] = np.std(samples_nestle[:,0])      # standard deviation 
-resdict['m1nestle_mu'] = np.mean(samples_nestle[:,1])      # mean of m samples
-resdict['m1nestle_sig'] = np.std(samples_nestle[:,1])      # standard deviation of m samples
-resdict['m2nestle_mu'] = np.mean(samples_nestle[:,2])      # mean of c samples
-resdict['m2nestle_sig'] = np.std(samples_nestle[:,2])      # standard deviation of c samples
+resdict['deltatnestle_mu'] = np.mean(samples_nestle[:,0])      # mean of deltat samples
+resdict['deltatnestle_sig'] = np.std(samples_nestle[:,0])      # standard deviation of deltat samples
+resdict['m1nestle_mu'] = np.mean(samples_nestle[:,1])      # mean of m1 samples
+resdict['m1nestle_sig'] = np.std(samples_nestle[:,1])      # standard deviation of m1 samples
+resdict['m2nestle_mu'] = np.mean(samples_nestle[:,2])      # mean of m2 samples
+resdict['m2nestle_sig'] = np.std(samples_nestle[:,2])      # standard deviation of m2 samples
 
-resdict['distnestle_mu'] = np.mean(samples_nestle[:,3])      # mean of iota samples
-resdict['distnestle_sig'] = np.std(samples_nestle[:,3])      # standard deviation of iota samples
+resdict['distnestle_mu'] = np.mean(samples_nestle[:,3])      # mean of dist samples
+resdict['distnestle_sig'] = np.std(samples_nestle[:,3])      # standard deviation of dist samples
 
 resdict['iotanestle_mu'] = np.mean(samples_nestle[:,4])      # mean of iota samples
 resdict['iotanestle_sig'] = np.std(samples_nestle[:,4])      # standard deviation of iota samples
